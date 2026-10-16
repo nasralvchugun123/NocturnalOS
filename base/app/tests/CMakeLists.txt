@@ -1,0 +1,2 @@
+add_subdirectory(testdll)
+add_subdirectory(testload)

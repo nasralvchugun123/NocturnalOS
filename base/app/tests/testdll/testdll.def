@@ -1,0 +1,7 @@
+LIBRARY testdll
+EXPORTS
+    TestAdd
+    TestGetValue
+    TestHello
+    g_test_value
+    g_greeting

@@ -1,0 +1,21 @@
+//// basic /////
+ls
+cd
+show
+find
+kill
+edit
+mkfile
+shutdown
+reboot
+!as "admin" "user" "other"
+//// spec /////
+!ad call graphicmode && reboot fusionsrv
+
+//// operand ////
+&&
+/+
+??
+<
+>
+:
