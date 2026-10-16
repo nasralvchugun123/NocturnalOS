@@ -63,18 +63,9 @@ NocturnalOS — операционная система, написанная с
 
 **проект можно собрать просто командами:**
 
-╔═══════════════════════════════════════════╗
-║ terminal                                X ║
-╠═══════════════════════════════════════════╣
-║  -/home/user/NocturnalOS                  ║
-║                                           ║
-║                                           ║
-║                                           ║
-║ > cmake -B build -G Ninja                 ║
-║                                           ║
-║ > cmake --build build --target iso        ║
-║                                           ║
-╚═══════════════════════════════════════════╝
+- cmake -B build -G Ninja
+
+- cmake --build build --target iso
 
 ---
 
