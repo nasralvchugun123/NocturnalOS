@@ -41,7 +41,7 @@ extern void isr35(void); extern void isr36(void); extern void isr37(void);
 extern void isr38(void); extern void isr39(void); extern void isr40(void);
 extern void isr41(void); extern void isr42(void); extern void isr43(void);
 extern void isr44(void); extern void isr45(void); extern void isr46(void);
-extern void isr47(void); extern void isr128(void);
+extern void isr47(void); extern void isr128(void);extern void isr64(void);
 
 extern void isr_default(void);
 
@@ -84,7 +84,6 @@ void KiInitializeIdt(void)
    for (int i = 0; i < 48; i++) {
         idt_set(i, (uint64_t)(uintptr_t)stubs[i], KGDT_KCODE64, 0, attr);
     }
-        /* #DF -> IST1, #PF -> IST2, NMI -> IST1 */
     idt_set(2,  (uint64_t)(uintptr_t)isr2,  KGDT_KCODE64, 1, attr);
     idt_set(8,  (uint64_t)(uintptr_t)isr8,  KGDT_KCODE64, 1, attr);
     idt_set(14, (uint64_t)(uintptr_t)isr14, KGDT_KCODE64, 2, attr);
@@ -93,8 +92,10 @@ void KiInitializeIdt(void)
         idt_set(i, (uint64_t)(uintptr_t)isr_default, KGDT_KCODE64, 0, attr);
     }
 
-    idt_set(0x80, (uint64_t)(uintptr_t)isr128, KGDT_KCODE64, 0, 0xEE);
+    idt_set(64, (uint64_t)(uintptr_t)isr64, KGDT_KCODE64, 0, attr);
 
+    idt_set(0x80, (uint64_t)(uintptr_t)isr128, KGDT_KCODE64, 0, 0xEE);
+    
     gIdtr.limit = sizeof(gIdt) - 1;
     gIdtr.base  = (uint64_t)&gIdt;
 

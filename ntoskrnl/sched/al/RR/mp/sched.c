@@ -5,8 +5,10 @@
 #include <dbg/print/kdprint.h>
 #include <ke/kcpu.h>
 #include <ke/spinlock.h>
+#include <halx64/Apic/Apic.h>
 
 #define QUANTUM_TICKS    10
+#define IPI_VECTOR_RESCHEDULE 0x40
 #define WAKEUP_INFINITE  0xFFFFFFFFFFFFFFFFULL
 
 extern uint64_t MmGetKernelPml4(void);
@@ -16,6 +18,22 @@ static KTHREAD  *gBlockedHead = 0;
 
 KTHREAD *KeGetCurrentThread(void) { return KeCurrentCpu()->CurrentThread; }
 void KiSetCurrentThread(KTHREAD *t) { KeCurrentCpu()->CurrentThread = t; }
+
+static volatile uint32_t gNextCpuIndex = 0;
+
+uint32_t KiGetNextCpuForThread(void)
+{
+    uint32_t start_idx = __atomic_fetch_add(&gNextCpuIndex, 1, __ATOMIC_RELAXED);
+    
+    for (uint32_t i = 0; i < KCpuMaxCount; i++) {
+        uint32_t idx = (start_idx + i) % KCpuMaxCount;
+        if (gCpus[idx].Online) {
+            return idx;
+        }
+    }
+    return 0; 
+}
+
 
 void KiInsertReadyThreadOnCpu(uint32_t CpuIndex, KTHREAD *t)
 {
@@ -44,6 +62,13 @@ void KiInsertReadyThreadOnCpu(uint32_t CpuIndex, KTHREAD *t)
     }
 
     KeReleaseSpinLockIrqRestore(&cpu->RunQueueLock, f);
+
+    uint32_t my_cpu = KeCurrentCpu()->CpuId; 
+
+    if (CpuIndex != my_cpu) {
+        uint32_t icr = 0x40; 
+        HalpSendIpi(cpu->ApicId, icr);
+    }
 }
 
 void KiInsertReadyThread(KTHREAD *t)
@@ -157,19 +182,26 @@ static void KiIdleProc(void *arg)
 {
     (void)arg;
     for (;;) {
-        __asm__ volatile ("sti");
-        __asm__ volatile ("hlt");
+        __asm__ volatile ("cli");
+        if (KeCurrentCpu()->ReadyHead) {
+            __asm__ volatile ("sti");
+            KiScheduleNext();
+        } else {
+            __asm__ volatile ("sti");
+            __asm__ volatile ("hlt");
+        }
     }
 }
 
 KTHREAD *KiCreateIdleThreadForCurrentCpu(void)
 {
-    KTHREAD *idle = PsCreateThread(KiIdleProc, 0, "idle");
+    KTHREAD *idle = PsCreateThread(KiIdleProc, 0, "idle", 0);
     if (!idle) return 0;
+    idle->LastCpuIndex = KeCurrentCpu()->CpuId; 
+    
     KeCurrentCpu()->IdleThread = idle;
     return idle;
 }
-
 void KiInitScheduler(void)
 {
     if (!KiCreateIdleThreadForCurrentCpu()) {

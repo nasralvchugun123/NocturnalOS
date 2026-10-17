@@ -15,7 +15,7 @@ void PsInitSystem(void)
     sys->Pml4Phys = 0;
     sys->MainThread = 0;
 
-    KTHREAD *bootstrap = PsCreateThread(0, 0, "bootstrap");
+    KTHREAD *bootstrap = PsCreateThread(0, 0, "bootstrap", 0);
     if (!bootstrap) {
         KdPrint("[ps] FATAL: bootstrap thread creation failed\n");
         for (;;) __asm__ volatile ("hlt");

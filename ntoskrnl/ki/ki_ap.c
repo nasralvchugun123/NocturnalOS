@@ -10,6 +10,7 @@ extern void KiReloadIdt(void);
 extern void HalpLapicInitAp(void);
 extern uint32_t HalpLapicGetId(void);
 extern KTHREAD *KiCreateIdleThreadForCurrentCpu(void);
+extern void KiInitSyscallMsrsForCurrentCpu(void);
 
 void KiApEntry(uint32_t CpuIndexIgnored)
 {
@@ -19,11 +20,13 @@ void KiApEntry(uint32_t CpuIndexIgnored)
 
     KCPU *cpu = &gCpus[CpuIndex];
     KeInitializeProcessorStruct(cpu, CpuIndex, 0);
-    wrmsr(0xC0000101u, (uint64_t)(uintptr_t)cpu);
+    wrmsr(KCpuGsMsrBase, (uint64_t)(uintptr_t)cpu);
+    wrmsr(KCpuGsMsrKernelBase, 0);
 
     KiInitializeGdt();
     KiInitializeTss();
     KiReloadIdt();
+    KiInitSyscallMsrsForCurrentCpu();
     HalpLapicInitAp();
     cpu->ApicId = HalpLapicGetId();
 

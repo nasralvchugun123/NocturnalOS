@@ -6,6 +6,8 @@
 #include "../../ke/kbd.h"
 #include "../../mm/mm.h"
 #include "../../ps/ps.h"
+#include <ke/kcpu.h>
+#include <halx64/Apic/Apic.h>
 
 extern void HalEndOfInterrupt(uint8_t Irq);
 extern void KeUpdateClock(void);
@@ -177,12 +179,18 @@ static void KiHandleUserFault(INTERRUPT_FRAME *f)
              (unsigned long long)f->r12, (unsigned long long)f->r13,
              (unsigned long long)f->r14, (unsigned long long)f->r15);
 
-    if (f->rip < 0x100000000ULL) {
+    if (f->vector == 6) {
         uint8_t *b = (uint8_t *)(uintptr_t)f->rip;
+        uint32_t efer_lo, efer_hi;
+        uint64_t efer;
         KdPrintf("[usr]   bytes@RIP:");
         for (int i = 0; i < 16; i++)
             KdPrintf(" %02x", b[i]);
-        KdPrint("[usr]   \n");
+        KdPrint("\n");
+        __asm__ volatile ("rdmsr" : "=a"(efer_lo), "=d"(efer_hi) : "c"(0xC0000080u));
+        efer = ((uint64_t)efer_hi << 32) | efer_lo;
+        KdPrintf("[usr]   EFER=0x%llx SCE=%u\n",
+                 (unsigned long long)efer, (unsigned)(efer & 1));
     }
 
     if (f->rsp < 0x100000000ULL) {
@@ -200,7 +208,7 @@ static void KiHandleUserFault(INTERRUPT_FRAME *f)
                           : "=a"(kgs_lo), "=d"(kgs_hi)
                           : "c"(0xC0000102u));
         KdPrintf("[usr]   user GS_BASE was = 0x%08x%08x "
-                 "(want 0x000000008000900000)\n",
+                 "(want 0x0000008000900000)\n",
                  kgs_hi, kgs_lo);
     }
 
@@ -221,13 +229,6 @@ static void KiHandleUserFault(INTERRUPT_FRAME *f)
 
 void KiIsrCommon(INTERRUPT_FRAME *frame)
 {
-    /*
-        KdPrintf("[isr] vec=%llu cs=0x%llx rip=0x%llx err=0x%llx\n",
-             (unsigned long long)frame->vector,
-             (unsigned long long)frame->cs,
-             (unsigned long long)frame->rip,
-             (unsigned long long)frame->error);
-    */
     if (frame->vector >= 0x20 && frame->vector < 0x30) {
         static int gIrqDbg = 0;
         if (gIrqDbg++ < 5)
@@ -248,9 +249,16 @@ void KiIsrCommon(INTERRUPT_FRAME *frame)
             return;
         }
         KiPanicException(frame);
-    } else if (frame->vector >= 0x20 && frame->vector < 0x30) {
+    } 
+    else if (frame->vector >= 0x20 && frame->vector < 0x30) {
         KiHandleIrq(frame, (uint8_t)(frame->vector - 0x20));
-    } else {
+    } 
+    else if (frame->vector == 64) {
+        HalpLapicSendEoi();
+        KeCurrentCpu()->Quantum = 0; 
+        
+    }
+    else {
         KdPrintf("[Ke] unhandled vector %llu, halting\n",
                  (unsigned long long)frame->vector);
         for (;;) __asm__ volatile ("hlt");
