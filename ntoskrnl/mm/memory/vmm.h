@@ -2,6 +2,7 @@
 #define MM_VMM_H
 
 #include <stdint.h>
+#include <boot_info.h>
 
 #define PTE_PRESENT     (1ULL << 0)
 #define PTE_WRITABLE    (1ULL << 1)
@@ -21,8 +22,9 @@
 #define PD_INDEX(v)     (((v) >> 21) & 0x1FF)
 #define PT_INDEX(v)     (((v) >> 12) & 0x1FF)
 
-#define VMM_IDENTITY_GB    4
-#define VMM_IDENTITY_SIZE  ((uint64_t)VMM_IDENTITY_GB << 30)
+#define VMM_IDENTITY_GB_MIN 4ULL
+#define VMM_IDENTITY_GB_MAX 512ULL
+#define VMM_IDENTITY_SIZE  (VMM_IDENTITY_GB_MIN << 30)
 
 #define USER_CODE_ADDR     0x0000008000000000ULL    /* 512 GB        */
 #define USER_PARAMS_ADDR   0x0000008000100000ULL    /* 512 GB + 1 MB */
@@ -33,7 +35,7 @@
 #define USER_PEB_ADDR      0x0000008000800000ULL    /* 512 GB + 8 MB  */
 #define USER_TEB_ADDR      0x0000008000900000ULL    /* 512 GB + 9 MB  */
 
-void     MiInitVmm(void);
+void     MiInitVmm(BOOT_INFO *BootInfo);
 
 uint64_t MmGetKernelPml4(void);
 uint64_t MmGetCurrentPml4(void);

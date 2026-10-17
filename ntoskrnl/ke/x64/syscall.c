@@ -258,7 +258,7 @@ static uint64_t KiReadMsr(uint32_t msr)
 #define MSR_LSTAR   0xC0000082
 #define MSR_FMASK   0xC0000084
 
-static void KiInitSyscallMsrs(void)
+void KiInitSyscallMsrsForCurrentCpu(void)
 {
     uint64_t efer = KiReadMsr(MSR_EFER);
     KiWriteMsr(MSR_EFER, efer | 1);
@@ -271,7 +271,22 @@ static void KiInitSyscallMsrs(void)
     KiWriteMsr(MSR_LSTAR, lstar);
     KiWriteMsr(MSR_FMASK, 0x200);
 
-    KdPrint("[syscall] MSRs ready\n");
+    uint32_t eax = 1, ebx, ecx, edx;
+    __asm__ volatile ("cpuid" : "+a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx));
+    (void)ecx;
+    (void)edx;
+    uint32_t apic_id = ebx >> 24;
+    uint64_t efer_rb = KiReadMsr(MSR_EFER);
+    uint64_t star_rb = KiReadMsr(MSR_STAR);
+    uint64_t lstar_rb = KiReadMsr(MSR_LSTAR);
+    uint64_t fmask_rb = KiReadMsr(MSR_FMASK);
+    KdPrintf("[syscall] CPU%u EFER=%llx STAR=%llx LSTAR=%llx FMASK=%llx SCE=%u\n",
+             apic_id,
+             (unsigned long long)efer_rb,
+             (unsigned long long)star_rb,
+             (unsigned long long)lstar_rb,
+             (unsigned long long)fmask_rb,
+             (unsigned)(efer_rb & 1));
 }
 
 static uint64_t NtCreateMutant(uint64_t handle_out_ptr,
@@ -719,6 +734,8 @@ static uint64_t NtWriteConsole(uint64_t str_ptr,
         if (c == 0) break;
     }
     buf[i] = 0;
+
+    KdBeginUserConsole();
     FbPrint(buf);
 
     __asm__ volatile ("sti");
@@ -818,7 +835,7 @@ void KiRegisterSyscall(uint32_t Nr, NtSyscallFn Fn)
 
 void KiInitSyscalls(void)
 {
-    KiInitSyscallMsrs();
+    KiInitSyscallMsrsForCurrentCpu();
     for (int i = 0; i < 256; i++) gSyscallTable[i] = 0;
 
     KiRegisterSyscall(SYS_NT_CREATE_MUTANT,           NtCreateMutant);

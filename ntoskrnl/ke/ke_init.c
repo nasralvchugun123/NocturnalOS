@@ -13,10 +13,6 @@ void KeInitSystem(void)
 {
     KdPrint("[Ke] KeInitSystem: start\n");
 
-    KiInitializeGdt();
-    KiInitializeTss();
-    KiInitializeIdt();
-
     KeInitializeClock(100);
     KeInitializeExceptionHandling();
 

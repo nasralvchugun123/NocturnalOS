@@ -7,6 +7,8 @@
  #define KD_ENABLE_SERIAL 1
 
 static KSPINLOCK gKdPrintLock = KSPINLOCK_INIT;
+static int gKdFramebufferOutput = 1;
+static int gKdUserConsoleStarted = 0;
 
 #ifdef KD_ENABLE_SERIAL
 static inline void outb(uint16_t p, uint8_t v)
@@ -35,7 +37,19 @@ static void kd_putc(char c)
     while (!(inb(0x3F8 + 5) & 0x20)) { }
     outb(0x3F8, (uint8_t)c);
 #endif
-    if (FbIsReady()) FbPutChar(c);
+    if (gKdFramebufferOutput && FbIsReady()) FbPutChar(c);
+}
+
+
+VOID KdBeginUserConsole(VOID)
+{
+    uint64_t flags = KeAcquireSpinLockIrqSave(&gKdPrintLock);
+    if (!gKdUserConsoleStarted) {
+        gKdUserConsoleStarted = 1;
+        gKdFramebufferOutput = 0;
+        if (FbIsReady()) FbClear(0);
+    }
+    KeReleaseSpinLockIrqRestore(&gKdPrintLock, flags);
 }
 
 VOID KdPrint(const char *s)

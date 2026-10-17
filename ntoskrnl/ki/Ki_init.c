@@ -1,6 +1,7 @@
 #include "../ntoskrnl.h"
 #include "boot_info.h"
 #include <rt.h>
+#include "../ke/ke.h"
 #include "../ke/kbd.h"
 #include "../ke/shell.h"
 #include "../mm/mm.h"
@@ -106,6 +107,7 @@ static void KiBringUpStorage(void)
 
 void KiSystemStartup(BOOT_INFO *BootInfo)
 {
+    __asm__ volatile ("cli" ::: "memory");
     KdInitSerial();
     KdPrint("\n\n\n\n\n");
     KCpuInitBsp(); 
@@ -115,6 +117,11 @@ void KiSystemStartup(BOOT_INFO *BootInfo)
         for (;;) __asm__ volatile ("hlt");
     }
     gBootInfo = BootInfo;
+
+    KdPrint("[Ki] installing early GDT/TSS/IDT\n");
+    KiInitializeGdt();
+    KiInitializeTss();
+    KiInitializeIdt();
 
     KdPrint("                                                                <system>                                                          \n");
     KdPrint("################################################################################################################################# \n");

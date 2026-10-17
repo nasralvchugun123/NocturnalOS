@@ -7,7 +7,7 @@ void MmInitSystem(BOOT_INFO *BootInfo)
 {
     KdPrint("[MM] MmInitSystem: start\n");
     PmmInitSystem(BootInfo);
-    MiInitVmm();
+    MiInitVmm(BootInfo);
     KdPrint("[MM] MmInitSystem: ok\n");
 }
 

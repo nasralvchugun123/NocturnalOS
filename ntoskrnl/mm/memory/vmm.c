@@ -40,45 +40,128 @@ static void fill_pd_2mb_kernel(uint64_t pd_phys, uint64_t base)
     }
 }
 
-void MiInitVmm(void)
+static uint64_t range_end(uint64_t base, uint64_t size)
 {
-    KdPrint("[MM] MiInitVmm: start\n");
+    if (!base || !size) return 0;
+    if (base > UINT64_MAX - size) return UINT64_MAX;
+    return base + size;
+}
 
+static uint64_t max_u64(uint64_t a, uint64_t b)
+{
+    return (a > b) ? a : b;
+}
+
+void MiInitVmm(BOOT_INFO *BootInfo)
+{
+    const uint64_t one_gib = 0x40000000ULL;
+    const uint64_t identity_limit = 1ULL << 39;
+    uint64_t required_end = PmmGetTotalPages() << 12;
+    uint64_t context_end = 0;
+
+    KdPrint("[MM] MiInitVmm: start\n");
+    KdPrintf("[MM] VMM: old CR3=0x%llx PMM highest=0x%llx\n",
+             (unsigned long long)MmGetCurrentPml4(),
+             (unsigned long long)(PmmGetTotalPages() << 12));
+
+    if (BootInfo) {
+        context_end = max_u64(context_end,
+            range_end(BootInfo->KernelBase, BootInfo->KernelSize));
+        context_end = max_u64(context_end, BootInfo->StackTop);
+        context_end = max_u64(context_end,
+            range_end((uint64_t)(uintptr_t)BootInfo, sizeof(*BootInfo)));
+        uint64_t memory_map_end = range_end(BootInfo->MemoryMap,
+                                            BootInfo->MemoryMapSize);
+        if (memory_map_end && memory_map_end < identity_limit)
+            context_end = max_u64(context_end, memory_map_end);
+        else if (memory_map_end >= identity_limit)
+            KdPrintf("[MM] VMM: EFI memory map buffer above 512 GiB; PMM init already consumed it\n");
+        if (BootInfo->FramebufferBase && BootInfo->FramebufferSize) {
+            uint64_t fb_end = range_end(BootInfo->FramebufferBase,
+                                        BootInfo->FramebufferSize);
+            if (fb_end <= identity_limit)
+                context_end = max_u64(context_end, fb_end);
+            else
+                KdPrintf("[MM] VMM: framebuffer range exceeds 512 GiB map: base=0x%llx size=0x%llx\n",
+                         (unsigned long long)BootInfo->FramebufferBase,
+                         (unsigned long long)BootInfo->FramebufferSize);
+        }
+    }
+    required_end = max_u64(required_end, context_end);
+
+    if (context_end >= identity_limit) {
+        KdPrintf("[MM] FATAL: active boot context reaches 0x%llx; bootstrap map limit is 0x%llx\n",
+                 (unsigned long long)context_end,
+                 (unsigned long long)identity_limit);
+        for (;;) __asm__ volatile ("cli; hlt");
+    }
+
+    uint64_t identity_gb = required_end / one_gib;
+    if ((required_end % one_gib) != 0) identity_gb++;
+    if (identity_gb < VMM_IDENTITY_GB_MIN)
+        identity_gb = VMM_IDENTITY_GB_MIN;
+    if (identity_gb > VMM_IDENTITY_GB_MAX) {
+        KdPrintf("[MM] VMM: physical range 0x%llx exceeds 512 GiB; initial map capped\n",
+                 (unsigned long long)required_end);
+        identity_gb = VMM_IDENTITY_GB_MAX;
+    }
+    KdPrintf("[MM] VMM: identity map target=%llu GiB (kernel=0x%llx+0x%llx stack_top=0x%llx)\n",
+             (unsigned long long)identity_gb,
+             (unsigned long long)(BootInfo ? BootInfo->KernelBase : 0),
+             (unsigned long long)(BootInfo ? BootInfo->KernelSize : 0),
+             (unsigned long long)(BootInfo ? BootInfo->StackTop : 0));
+
+    KdPrint("[MM] VMM step 1: allocate PML4\n");
     uint64_t pml4_phys = (uint64_t)(uintptr_t)PmmAllocatePage();
+    KdPrintf("[MM] VMM PML4 phys=0x%llx\n", (unsigned long long)pml4_phys);
+    KdPrint("[MM] VMM step 2: allocate PDPT\n");
     uint64_t pdpt_phys = (uint64_t)(uintptr_t)PmmAllocatePage();
+    KdPrintf("[MM] VMM PDPT phys=0x%llx\n", (unsigned long long)pdpt_phys);
     if (!pml4_phys || !pdpt_phys) {
         KdPrint("[MM] MiInitVmm: PML4/PDPT alloc failed\n");
-        for (;;) __asm__ volatile ("hlt");
+        for (;;) __asm__ volatile ("cli; hlt");
     }
+
+    KdPrint("[MM] VMM step 3: zero PML4\n");
     zero_page(pml4_phys);
+    KdPrint("[MM] VMM step 4: zero PDPT\n");
     zero_page(pdpt_phys);
 
     uint64_t *pml4 = page_ptr(pml4_phys);
     uint64_t *pdpt = page_ptr(pdpt_phys);
 
-    for (int gb = 0; gb < VMM_IDENTITY_GB; gb++) {
+    for (uint64_t gb = 0; gb < identity_gb; gb++) {
         uint64_t pd_phys = (uint64_t)(uintptr_t)PmmAllocatePage();
         if (!pd_phys) {
-            KdPrint("[MM] MiInitVmm: PD alloc failed\n");
-            for (;;) __asm__ volatile ("hlt");
+            KdPrintf("[MM] MiInitVmm: PD alloc failed at GB=%llu\n",
+                     (unsigned long long)gb);
+            for (;;) __asm__ volatile ("cli; hlt");
         }
+        if ((gb & 63) == 0)
+            KdPrintf("[MM] VMM PD[%llu] phys=0x%llx\n",
+                     (unsigned long long)gb,
+                     (unsigned long long)pd_phys);
         zero_page(pd_phys);
-        fill_pd_2mb_kernel(pd_phys, (uint64_t)gb * 0x40000000ULL);
+        fill_pd_2mb_kernel(pd_phys, gb * one_gib);
 
         pdpt[gb] = (pd_phys & PTE_ADDR_MASK)
-                 | PTE_PRESENT | PTE_WRITABLE | PTE_USER;
+                 | PTE_PRESENT | PTE_WRITABLE;
     }
 
     pml4[0] = (pdpt_phys & PTE_ADDR_MASK)
-            | PTE_PRESENT | PTE_WRITABLE | PTE_USER;
+            | PTE_PRESENT | PTE_WRITABLE;
 
     gKernelPml4 = pml4_phys;
 
+    KdPrintf("[MM] VMM switching CR3: old=0x%llx new=0x%llx mapped=0..0x%llx\n",
+             (unsigned long long)MmGetCurrentPml4(),
+             (unsigned long long)gKernelPml4,
+             (unsigned long long)(identity_gb * one_gib));
     MmSwitchAddressSpace(gKernelPml4);
 
-    KdPrintf("[MM] VMM: CR3=0x%llx, identity 0..%llu GB kernel-only\n",
+    KdPrintf("[MM] VMM: CR3=0x%llx, identity 0..%llu GiB kernel-only\n",
              (unsigned long long)MmGetCurrentPml4(),
-             (unsigned long long)VMM_IDENTITY_GB);
+             (unsigned long long)identity_gb);
 }
 
 static uint64_t *walk_create_pd(uint64_t pml4_phys, uint64_t virt)
