@@ -18,6 +18,8 @@ static volatile uint32_t gNextThreadId = 1;
 static volatile uint32_t gNextPid      = 1;
 
 extern void KiEnterUserMode(uint64_t EntryPoint, uint64_t UserStackTop, uint64_t Params);
+extern uint32_t KiGetNextCpuForThread(void);
+extern void KiInsertReadyThreadOnCpu(uint32_t CpuIndex, KTHREAD *t);
 
 static struct {
     OBJECT_HEADER Hdr;
@@ -130,7 +132,7 @@ static void KiInitThreadStack(KTHREAD *t)
     t->Rsp = (uint64_t)(uintptr_t)sp;
 }
 
-KTHREAD *PsCreateThread(void (*EntryPoint)(void *), void *Argument, const char *Name)
+KTHREAD *PsCreateThread(void (*EntryPoint)(void *), void *Argument, const char *Name, EPROCESS *Process)
 {
     KTHREAD *t = (KTHREAD *)MmAllocatePages(1);
     if (!t) {
@@ -146,9 +148,8 @@ KTHREAD *PsCreateThread(void (*EntryPoint)(void *), void *Argument, const char *
     t->Argument   = Argument;
 
     KTHREAD *cur = KeGetCurrentThread();
-    /* Set affinity before the thread can become visible on a run queue. */
     t->LastCpuIndex = KeCurrentCpu()->CpuId;
-    t->Process = cur ? cur->Process : PsGetSystemProcess();
+    t->Process = Process ? Process : (cur ? cur->Process : PsGetSystemProcess());
 
     if (Name) {
         int i;
@@ -156,7 +157,7 @@ KTHREAD *PsCreateThread(void (*EntryPoint)(void *), void *Argument, const char *
         t->Name[i] = 0;
     }
 
-    if (EntryPoint) {
+        if (EntryPoint) {
         void *stack = MmAllocatePages(4);
         if (!stack) {
             KdPrint("[ps] PsCreateThread: stack alloc failed\n");
@@ -167,7 +168,18 @@ KTHREAD *PsCreateThread(void (*EntryPoint)(void *), void *Argument, const char *
         t->KernelStackTop  = ((uint64_t)(uintptr_t)stack + 4 * 4096) & ~0xFULL;
         t->State           = ThreadStateReady;
         KiInitThreadStack(t);
-        KiInsertReadyThread(t);
+        
+        int isIdle = 0;
+        if (Name && Name[0]=='i' && Name[1]=='d' && Name[2]=='l' && Name[3]=='e' && Name[4]==0) {
+            isIdle = 1;
+        }
+
+        if (!isIdle) {
+            t->LastCpuIndex = KiGetNextCpuForThread(); 
+            KiInsertReadyThreadOnCpu(t->LastCpuIndex, t);
+        } else {
+            t->LastCpuIndex = KeCurrentCpu()->CpuId;
+        }
     } else {
         t->State = ThreadStateReady;
     }
@@ -310,7 +322,7 @@ static uint64_t PsBuildTeb(uint64_t Pml4, uint64_t PebVa, uint64_t StackTop)
 
     TEB *teb = (TEB *)p;
 
-    /*NT_TIB Windows x86_64 layout (но это не точно)*/
+    /*NT_TIB Windows x86_64 layout (не,     уже точно)*/
     teb->NtTib.ExceptionList        = (PVOID)0xFFFFFFFFFFFFFFFFULL;
     teb->NtTib.StackBase            = (PVOID)StackTop;
     teb->NtTib.StackLimit           = (PVOID)(StackTop - 0x1000);
@@ -502,7 +514,7 @@ EPROCESS *PsCreateUserProcess(const char *Path, const char *CmdLine, HANDLE *Han
 
     __asm__ volatile ("cli");
 
-    KTHREAD *t = PsCreateThread(KiUserThreadStartup, proc, proc->Name);
+    KTHREAD *t = PsCreateThread(KiUserThreadStartup, proc, proc->Name, proc);
     if (!t) {
         __asm__ volatile ("sti");
         KdPrintf("[ps] '%s': PsCreateThread failed\n", proc->Name);
@@ -511,9 +523,8 @@ EPROCESS *PsCreateUserProcess(const char *Path, const char *CmdLine, HANDLE *Han
         ObDereferenceObject(proc);
         return 0;
     }
-    t->Process       = proc;
+
     proc->MainThread = t;
-    t->LastCpuIndex = KeCurrentCpu()->CpuId;
     
     HANDLE selfH = PsCreateHandle(proc, &ObpProcessType, proc);
     (void)selfH;

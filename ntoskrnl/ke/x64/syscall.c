@@ -375,7 +375,7 @@ static uint64_t NtReleaseMutant(uint64_t handle, uint64_t prev_count_ptr,
     KTHREAD *cur = KeGetCurrentThread();
     if (!cur || !cur->Process) return (uint64_t)-1;
 
-    OBJECT_HEADER *hdr = ObpLookupHandle(cur->Process, handle, &ObpMutantType);
+    OBJECT_HEADER *hdr = ObpLookupHandle(cur->Process, (HANDLE)handle, &ObpMutantType);
     if (!hdr) {
         KdPrintf("[syscall] NtReleaseMutant: bad handle %llu\n",
                  (unsigned long long)handle);
@@ -520,7 +520,7 @@ static uint64_t NtSetEvent(uint64_t handle, uint64_t prev_state_ptr,
     KTHREAD *cur = KeGetCurrentThread();
     if (!cur || !cur->Process) return (uint64_t)-1;
 
-    OBJECT_HEADER *hdr = ObpLookupHandle(cur->Process, handle, &ObpEventType);
+    OBJECT_HEADER *hdr = ObpLookupHandle(cur->Process, (HANDLE)handle, &ObpMutantType);
     if (!hdr) return (uint64_t)-1;
 
     if (prev_state_ptr)
@@ -539,7 +539,7 @@ static uint64_t NtResetEvent(uint64_t handle, uint64_t prev_state_ptr,
     KTHREAD *cur = KeGetCurrentThread();
     if (!cur || !cur->Process) return (uint64_t)-1;
 
-    OBJECT_HEADER *hdr = ObpLookupHandle(cur->Process, handle, &ObpEventType);
+    OBJECT_HEADER *hdr = ObpLookupHandle(cur->Process, (HANDLE)handle, &ObpMutantType);
     if (!hdr) return (uint64_t)-1;
 
     if (prev_state_ptr)
@@ -558,7 +558,7 @@ static uint64_t NtPulseEvent(uint64_t handle, uint64_t prev_state_ptr,
     KTHREAD *cur = KeGetCurrentThread();
     if (!cur || !cur->Process) return (uint64_t)-1;
 
-    OBJECT_HEADER *hdr = ObpLookupHandle(cur->Process, handle, &ObpEventType);
+    OBJECT_HEADER *hdr = ObpLookupHandle(cur->Process, (HANDLE)handle, &ObpMutantType);
     if (!hdr) return (uint64_t)-1;
 
     if (prev_state_ptr)
@@ -675,7 +675,7 @@ static uint64_t NtReleaseSemaphore(uint64_t handle, uint64_t release_count,
     KTHREAD *cur = KeGetCurrentThread();
     if (!cur || !cur->Process) return (uint64_t)-1;
 
-    OBJECT_HEADER *hdr = ObpLookupHandle(cur->Process, handle, &ObpSemaphoreType);
+    OBJECT_HEADER *hdr = ObpLookupHandle(cur->Process, (HANDLE)handle, &ObpMutantType);
     if (!hdr) return (uint64_t)-1;
 
     KSEMAPHORE *s = (KSEMAPHORE *)OBJ_BODY(hdr);

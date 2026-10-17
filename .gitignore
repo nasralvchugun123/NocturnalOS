@@ -16,8 +16,6 @@ buildArm64/
 *.exe
 *.dll
 *.sys
-*.sh
-*.bat
 *.img 
 *.iso
 

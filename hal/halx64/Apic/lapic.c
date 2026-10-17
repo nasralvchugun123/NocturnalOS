@@ -105,3 +105,9 @@ void HalpSendIpi(uint32_t TargetApicId, uint32_t IcrLow)
         __asm__ volatile("pause");
     }
 }
+
+void HalpSendRescheduleIpi(uint32_t TargetApicId)
+{
+    uint32_t icr = 0x40 | (1u << 14); // Vector 0x40, Assert
+    HalpSendIpi(TargetApicId, icr);
+}

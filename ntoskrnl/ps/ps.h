@@ -77,8 +77,8 @@ typedef struct _EPROCESS {
 
 void      PsInitSystem(void);
 
-KTHREAD  *PsCreateThread(void (*EntryPoint)(void *), void *Argument,
-                         const char *Name);
+KTHREAD *PsCreateThread(void (*EntryPoint)(void *), void *Argument, const char *Name, EPROCESS *Process);
+
 void      PsTerminateCurrentThread(void);
 EPROCESS *PsGetSystemProcess(void);
 EPROCESS *PsCreateUserProcess(const char *Path, const char *CmdLine,

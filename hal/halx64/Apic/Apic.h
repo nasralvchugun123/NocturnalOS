@@ -30,6 +30,7 @@ void     HalpIoapicSetEntry(uint8_t Gsi, uint8_t Vector, uint8_t LapicId, int Ma
 uint32_t HalpIoapicGetVersion(void);
 
 void     HalpPicDisable(void);
+void    HalpSendRescheduleIpi(uint32_t TargetApicId);
 
 #define LAPIC_ICR_LOW        0x300
 #define LAPIC_ICR_HIGH       0x310

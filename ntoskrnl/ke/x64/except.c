@@ -6,6 +6,8 @@
 #include "../../ke/kbd.h"
 #include "../../mm/mm.h"
 #include "../../ps/ps.h"
+#include <ke/kcpu.h>
+#include <halx64/Apic/Apic.h>
 
 extern void HalEndOfInterrupt(uint8_t Irq);
 extern void KeUpdateClock(void);
@@ -221,13 +223,6 @@ static void KiHandleUserFault(INTERRUPT_FRAME *f)
 
 void KiIsrCommon(INTERRUPT_FRAME *frame)
 {
-    /*
-        KdPrintf("[isr] vec=%llu cs=0x%llx rip=0x%llx err=0x%llx\n",
-             (unsigned long long)frame->vector,
-             (unsigned long long)frame->cs,
-             (unsigned long long)frame->rip,
-             (unsigned long long)frame->error);
-    */
     if (frame->vector >= 0x20 && frame->vector < 0x30) {
         static int gIrqDbg = 0;
         if (gIrqDbg++ < 5)
@@ -248,9 +243,16 @@ void KiIsrCommon(INTERRUPT_FRAME *frame)
             return;
         }
         KiPanicException(frame);
-    } else if (frame->vector >= 0x20 && frame->vector < 0x30) {
+    } 
+    else if (frame->vector >= 0x20 && frame->vector < 0x30) {
         KiHandleIrq(frame, (uint8_t)(frame->vector - 0x20));
-    } else {
+    } 
+    else if (frame->vector == 64) {
+        HalpLapicSendEoi();
+        KeCurrentCpu()->Quantum = 0; 
+        
+    }
+    else {
         KdPrintf("[Ke] unhandled vector %llu, halting\n",
                  (unsigned long long)frame->vector);
         for (;;) __asm__ volatile ("hlt");
